@@ -1,4 +1,5 @@
 # Helpers
+import requests
 import time
 import urllib2
 import os
@@ -8,7 +9,6 @@ import csv
 import pattern
 from pattern.web import URL
 
-# Helper functions
 def openSoup(x):
 	"""Opens URL and create soup"""
 	return bsoup(urllib2.urlopen(x).read())
@@ -19,31 +19,37 @@ def cleanStrSoup(x, a, b, adj=None):
 		adj=len(a)
 	return x[x.find(a)+adj:x.find(b)]
 
-def termInfo(x, tData):
-	"""Removes data from HTML string associated with tData"""
-	text=[info for info in x if tData in info][0]
-	text=cleanStrSoup(text, '<div class="data">\r\n', '</div>\n</div>')
-	return text.replace('\r\n','').strip()
+def extInfo(raw,label):
+	store=dict.fromkeys(['plaintiff','claimant','year','month'])
+	store['plaintiff']=cleanStrSoup(raw[0],'colspan="3"',' v. ')
+	store['claimant']=cleanStrSoup(raw[0],' v. ',' (ICSID')
+	yr=cleanStrSoup(raw[0],'No. ARB/',')</td>').split('/')
+	if(len(yr[0])==2 and int(yr[0])>20):
+		year='19'+yr[0]
+	else:
+		year='20'+yr[0]
+	store['year']=year
+	store['month']=yr[1]
+	store['type']=label
+	return store
 
-def downloadText(link, dir, filename, sleep):
-	"""Downloads PDF file at given link and places in dir"""
-	cur=os.getcwd()
-	if not os.path.exists(dir):
-		os.makedirs(dir)
-	os.chdir(dir)
-	Ddir=os.getcwd()
-	files=[f for f in os.listdir(Ddir) if os.path.isfile(os.path.join(Ddir, f)) ]
-	if filename+'.pdf' not in files: 
-		url=URL(link)
-		try:
-			f=open(filename+'.pdf','wb')
-			f.write(url.download(cached=False))
-			f.close()
-			print filename + ' stored'
-			time.sleep(sleep)
-		except pattern.web.HTTP500InternalServerError, e:
-			print '\n '+ filename + ' link broken' + '\n '
-	os.chdir(cur)
+def scrapeICSID(address):
+	soup = openSoup(address)
+	page = address.split('Val=')[1]
+
+	# Find cases
+	dirty=soup.findAll('table', {'class':'rightInnerTable'})
+	table=dirty[0].find('table', {'id':'tabPrc'})
+	data=table.findAll('tr')
+
+	lineBR='<tr><td>&nbsp;</td></tr>'
+	newCase='<tr><td valign="top" width="30" class="contentBlueBold">'
+	cases=str(data).split(newCase)
+	cases=cases[1:len(cases)]
+	caseData=[case.split(lineBR) for case in cases]
+
+	# For now lets take simple approach and just pull out case-year info
+	return [extInfo(x,page) for x in caseData]
 
 def pullout(x):
 	"""Pulls out individual dictionary element from a 
@@ -54,103 +60,3 @@ def pullout(x):
 		for j in range(0,len(slice)):
 			values.append(slice[j])
 	return values
-
-def treatyScrape(sender, subAddress, cntries, base, downloadTreaty, dwnldTexts):
-	"""Scrapes all treaty data for a particular sender.
-	Sender should be a numeric index that gives the position
-	of a country in the subAddress or cntries list. subAddress
-	is a list of links to individual country pages on UNCTAD.
-	Cntries is a list of countries for which data is being
-	gathered. Base provides the homepage for investment policy hub. 
-	downloadTreaty is a boolean indicating whether or not to download treaties and
-	dwnldTexts is a running list of treaties downloaded to avoid dupliactes.
-	"""
-	soup=openSoup(subAddress[sender])
-	dirtySoup=[soup.findAll('td', {'data-position':str(x)}) for x in range(1,6)]
-
-	treatyData=[] # List of treaties for country, treaty info in dict format
-	for treaty in range(0,len(dirtySoup[0])):
-
-		strSoup=[]
-		for broth in dirtySoup:
-			strSoup.append(str(broth[treaty]))
-
-		# Find partner, sign/ratif date, and status of treaty
-		partner = re.sub('<[^>]+>', ' ', strSoup[0]).strip()
-		
-		signDate = cleanStrSoup(strSoup[2], 'fo">', '</span></td>')
-		ratifDate = cleanStrSoup(strSoup[3], 'fo">', '</span></td>')
-		status = cleanStrSoup(strSoup[1], 'fo">', '</span></td>')
-
-		# If status is terminated find date and reason
-		termDate=''; termType=''
-		if status=='Terminated':
-			exTreatyInfo=treatyPgScrape(base, strSoup, partner, cntries, sender, 2)
-			termDate = exTreatyInfo['termDate']
-			termType = exTreatyInfo['termType']
-
-		# If there is a treaty text, find languages and download
-		treatyLang=[]
-		if 'Full text' in strSoup[4]:
-			text=strSoup[4].split(' | ')
-			for t in text:
-				tLang=cleanStrSoup(t, '"_blank">', '</a>')
-				treatyLang.append(tLang)
-				tLink=base+cleanStrSoup(t, 'ref="', '" target="')
-				tName=cntries[sender]+'_'+partner+'_'+signDate[len(signDate)-4:len(signDate)]+'_'+tLang
-				if downloadTreaty and tLink not in dwnldTexts:
-					downloadText(link=tLink, dir='TreatyTexts', filename=tName, sleep=5)
-				dwnldTexts.append(tLink)
-		treatyLang=', '.join(treatyLang)
-
-		# Story data for individual treaty in dictionary
-		treatyDict={ 'sender':cntries[sender],
-					'partner':partner, 'signDate':signDate, 'ratifDate':ratifDate,
-					'status':status, 'termDate':termDate, 'termType':termType,
-					'treatyLang':treatyLang }
-		
-		# Store all treaties for country in a list
-		treatyData.append(treatyDict)
-
-	return [treatyData , dwnldTexts]
-
-def moveOn(sender, cntries, sleep):
-	""" Prints message and sleeps for a few seconds  """
-	print 'Data for ' + cntries[sender] + ' collected \n'
-	time.sleep(sleep) # Be nice to UNCTAD servers
-
-def treatyPgScrape(base, strSoup, partner, cntries, sender, sleep):
-	""" Scrapes individual treaty pages for details such as termination. """
-	treatyLink = base + cleanStrSoup(strSoup[0], 'ref="', '">'+partner)
-	treatySoup = openSoup(treatyLink)
-	stInfo = [str(tI) for tI in treatySoup.findAll('div', {'class':'form-data'})]
-
-	# Info to extract
-	ids={'partner':'Parties', 'status':'Status', 'signDate':'Date of signature', 
-		'ratifDate':'Date of entry into force', 'treatyLang':'Treaty full text',
-		'termDate':'Date of termination', 'termType':'Type of termination'}
-
-	# Extracting info from page into dictionary
-	for id in ids.keys(): 
-		if id=='partner':
-			ids[id]=cleanStrSoup(cleanStrSoup(stInfo[0]+'xxxx', '2. <a', 'xxxx'), 'Menu">', '</a></li>')
-		else:
-			text=[info for info in stInfo if ids[id] in info]
-			if id=='treatyLang':
-				langs=[]
-				text=str(text).split(' | ')
-				for t in text:
-					langs.append(cleanStrSoup(t, '"_blank">', '</a>')	)
-				ids[id]=', '.join(langs)
-			elif len(text) !=0 :
-				ids[id]=cleanStrSoup(text[0], 'class="data">\r\n', '\r\n        </div>').strip()
-			else:
-				ids[id]=''
-
-	# Storing info into new dictionary that matches format of BIT data
-	treatyDict={ 'sender':cntries[sender],
-						'partner':ids['partner'], 'signDate':ids['signDate'], 'ratifDate':ids['ratifDate'],
-						'status':ids['status'], 'termDate':ids['termDate'], 'termType':ids['termType'],
-						'treatyLang':ids['treatyLang'] }
-	time.sleep(sleep)
-	return treatyDict
