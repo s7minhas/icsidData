@@ -16,7 +16,7 @@ data=scrapeICSID(addresses[0])
 data.extend(scrapeICSID(addresses[1]))
 
 # Write to csv
-keys=['type','plaintiff','claimant','year','month']
+keys=['status','plaintiff','pClean','claimant','year','month','type']
 f=open('DisputesData.csv', 'wb')
 writer=csv.DictWriter(f, keys )
 writer.writer.writerow( keys )
