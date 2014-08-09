@@ -8,6 +8,7 @@ from BeautifulSoup import BeautifulSoup as bsoup
 import csv
 import pattern
 from pattern.web import URL
+from nltk import clean_html as clWeb
 
 def openSoup(x):
 	"""Opens URL and create soup"""
@@ -21,8 +22,8 @@ def cleanStrSoup(x, a, b, adj=None):
 
 def extInfo(raw,label):
 	store=dict.fromkeys(['plaintiff','claimant','year','month'])
-	store['plaintiff']=cleanStrSoup(raw[0],'colspan="3"',' v. ')
-	store['claimant']=cleanStrSoup(raw[0],' v. ',' (ICSID')
+	store['plaintiff']=clWeb( cleanStrSoup(raw[0],'colspan="3">',' v. ') )
+	store['claimant']=clWeb( cleanStrSoup(raw[0],' v. ',' (ICSID') )
 	yr=cleanStrSoup(raw[0],'No. ARB/',')</td>').split('/')
 	if(len(yr[0])==2 and int(yr[0])>20):
 		year='19'+yr[0]
@@ -49,7 +50,7 @@ def scrapeICSID(address):
 	caseData=[case.split(lineBR) for case in cases]
 
 	# For now lets take simple approach and just pull out case-year info
-	return [extInfo(x,page) for x in caseData]
+	return [[extInfo(x,page)] for x in caseData]
 
 def pullout(x):
 	"""Pulls out individual dictionary element from a 

@@ -1,6 +1,5 @@
 
 import os
-from compiler.ast import flatten
 import csv
 
 # Choose directory
@@ -13,9 +12,8 @@ from ICSIDhelpers import *
 # Load in parsable version of base webpage from UNCTAD's Investment Policy Hub
 addresses = ['https://icsid.worldbank.org/ICSID/FrontServlet?requestType=GenCaseDtlsRH&actionVal=ListConcluded','https://icsid.worldbank.org/ICSID/FrontServlet?requestType=GenCaseDtlsRH&actionVal=ListPending']
 
-dataConc=scrapeICSID(addresses[0])
-dataPend=scrapeICSID(addresses[1])
-data=flatten([dataConc,dataPend])
+data=scrapeICSID(addresses[0])
+data.extend(scrapeICSID(addresses[1]))
 
 # Write to csv
 keys=['type','plaintiff','claimant','year','month']
