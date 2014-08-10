@@ -24,14 +24,16 @@ disp$ccode=panel$ccode[match(disp$cname,panel$cname)]
 disp$cyear=paste0(disp$ccode,disp$year)
 
 # Add dispute vars
-disp$concDispute=0; disp$concDispute[disp$status=='ListConcluded']=1
-disp$pendDispute=0; disp$pendDispute[disp$status=='ListPending']=1
-disp$dispType=disp$type
+tmp=data.frame(disp[,c('cyear','status')])
+tmp$concDispute=0; tmp$concDispute[tmp$status=='ListConcluded']=1
+tmp$pendDispute=0; tmp$pendDispute[tmp$status=='ListPending']=1
+tmp=summaryBy(concDispute + pendDispute ~ cyear, data=tmp, FUN=sum, keep.names=T)
+disp=merge(tmp, unique(disp[,c('cyear','ccode','cname','year')]), by='cyear')
 
 # Create panel frame and subset to relev vars
 dataPanel=addYrPanel(disp, 'year', panel[,1:6], remove=TRUE) # extend panel
 dataPanel$cyear=paste0(dataPanel$ccode,dataPanel$year)
-relVars=c('cyear','concDispute','pendDispute','dispType')
+relVars=c('cyear','concDispute','pendDispute')
 disp=disp[,relVars]
 
 # Merge
